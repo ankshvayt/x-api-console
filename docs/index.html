@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>X API console: a local Twitter API v2 client</title>
+<meta name="description" content="Local console for the X API, also called the Twitter API v2. Call posts, users, DMs, media, and streams from your browser. Your keys stay on your machine.">
+<link rel="canonical" href="https://ankshvayt.github.io/x-api-console/">
+<meta property="og:title" content="X API console: a local Twitter API v2 client">
+<meta property="og:description" content="Call the X API from your browser. Posts, users, DMs, media, and streams. Keys stay on your machine.">
+<meta property="og:url" content="https://ankshvayt.github.io/x-api-console/">
+<meta property="og:type" content="website">
+<style>
+  body { margin: 0; background: #141311; color: #f4f0e6; font: 18px/1.5 Georgia, "Iowan Old Style", serif; }
+  main { max-width: 40rem; margin: 0 auto; padding: 48px 20px 80px; }
+  h1 { font-size: 2.4rem; line-height: 1.1; margin: 0 0 12px; }
+  h2 { font-size: 1.35rem; margin: 2rem 0 .4rem; }
+  p, li { color: #f4f0e6; }
+  a { color: #e2ff4d; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .9em; }
+  .lead { font-size: 1.2rem; }
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "X API console",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Windows, macOS, Linux",
+  "softwareRequirements": "Node.js 18 or newer",
+  "license": "https://opensource.org/licenses/MIT",
+  "url": "https://github.com/ankshvayt/x-api-console",
+  "description": "A local console for the X API, also called the Twitter API v2. You run it on your own machine and call posts, users, direct messages, media, and streams with your own keys.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is this the official X or Twitter API console?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. The X API console is an independent local tool. It is not an official X or Twitter product, and the repo does not include an API key."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does the X API console store my API keys in the repository?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. X API keys stay in browser localStorage for http://127.0.0.1:8787. A TypeSafe key you save is written to .jev-key, which git ignores."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How do I run the X API console?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Install Node.js 18 or newer, clone the repo, and run node start.js. Then open http://127.0.0.1:8787. There are no packages to install."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Which X API version does it call?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It calls X API v2 on api.x.com. That API is also known as the Twitter API v2. Media upload uses the v2 chunked upload routes."
+      }
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<main>
+  <h1>X API console</h1>
+  <p class="lead">A local console for the X API, also called the Twitter API v2. You paste your own keys, pick a route, and send the call from your browser. The keys stay on your machine.</p>
+  <p>This is not an official X product. The source is on <a href="https://github.com/ankshvayt/x-api-console">GitHub</a>. The license is MIT.</p>
+
+  <h2>What it calls</h2>
+  <p>Posts, users, follows, likes, bookmarks, lists, direct messages, Spaces, trends, media upload, streams, webhooks, communities, Community Notes, news, articles, chat, compliance, and usage. The list matches the X API docs as of 28 September 2026. A custom request box covers any other path on api.x.com.</p>
+
+  <h2>How to run it</h2>
+  <p>You need Node.js 18 or newer. There are no packages to install.</p>
+  <p><code>git clone https://github.com/ankshvayt/x-api-console.git</code><br>
+  <code>cd x-api-console</code><br>
+  <code>node start.js</code></p>
+  <p>Then open <a href="http://127.0.0.1:8787">http://127.0.0.1:8787</a>. If that port is busy, run <code>PORT=8790 node start.js</code> and open the address it prints.</p>
+
+  <h2>Where keys are stored</h2>
+  <p>X API keys stay in the browser for that localhost address. They are not in the git repo. A TypeSafe key you save from Credentials is written to <code>.jev-key</code> in the project folder. Git ignores that file. The key is not sent to X.</p>
+  <p>The page cannot call api.x.com by itself. <code>start.js</code> listens on 127.0.0.1 and only forwards to api.x.com, api.twitter.com, and upload.twitter.com.</p>
+
+  <h2>Is this the official Twitter API console?</h2>
+  <p>No. It is an independent tool for people who already have X API access. X bills pay-per-use calls on your developer account. Some routes need an enterprise plan.</p>
+
+  <h2>Can I post, delete, and send direct messages?</h2>
+  <p>Yes, with an OAuth 2 user token or OAuth 1.0a keys. A bearer token covers many public reads. The page asks you to confirm before a delete.</p>
+</main>
+</body>
+</html>

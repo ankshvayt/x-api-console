@@ -1,14 +1,24 @@
 # X API console
 
-A local page for calling the X API with your own keys. The keys stay in your browser. This is not an official X product.
+A local console for the X API, also called the Twitter API v2. You paste your own keys, pick a route, and send the call from your browser. The keys stay on your machine. This is not an official X product.
 
-The page includes the X API routes from the docs as of 28 September 2026, plus a custom request box for any other path.
+The page includes the X API routes published on 28 September 2026, plus a custom request box for any other path on `api.x.com`.
 
-## Run
+Short page: https://ankshvayt.github.io/x-api-console/
 
-You need Node.js 18 or newer.
+## What is the X API console?
+
+It is one HTML file and a small Node program. Node serves the page on your computer and forwards each call to X. The browser cannot call `api.x.com` by itself, so that forwarder is required.
+
+You can call posts, users, follows, likes, bookmarks, lists, direct messages, Spaces, trends, media upload, streams, webhooks, communities, Community Notes, news, articles, chat, compliance, and usage.
+
+## How do I run it?
+
+You need Node.js 18 or newer. There are no packages to install.
 
 ```bash
+git clone https://github.com/ankshvayt/x-api-console.git
+cd x-api-console
 node start.js
 ```
 
@@ -20,11 +30,9 @@ If that port is busy:
 PORT=8790 node start.js
 ```
 
-Open the address printed in the terminal.
+Open the address printed in the terminal. `npm start` does the same thing.
 
-`npm start` does the same thing. There are no dependencies to install.
-
-## Keys
+## How do I add my X API keys?
 
 Click **Credentials**.
 
@@ -40,29 +48,27 @@ http://127.0.0.1:8787/oauth/callback
 
 If you changed the port, use that port in the redirect URI. Add a client secret only if the app is a confidential client.
 
-The page saves keys in `localStorage` for that exact address. They are not in this repo. Do not commit a copy of the page after you have typed keys into it. Opening the HTML file directly does not work for API calls, and keys saved on a `file://` tab do not show up on localhost.
+X keys are saved in `localStorage` for that exact address. They are not in this repo. Opening the HTML file directly does not work for API calls, and keys saved on a `file://` tab do not show up on localhost.
 
-## What you can call
-
-Posts, users, follows, likes, bookmarks, lists, direct messages, Spaces, trends, media upload, streams, webhooks, communities, Community Notes, news, articles, chat, compliance, and usage. **Custom request** is there for a path that is not in the list.
+## What can I do after I am signed in?
 
 **Who am I** calls `GET /2/users/me`. You can type `{{me}}` in a user id field.
 
 **Upload** sends a file through the chunked media endpoints, then you can attach the media id to a new post.
 
+**Custom request** sends any other `api.x.com` path.
+
 Deletes ask you to confirm before they are sent. X bills pay-per-use calls on your developer account. Some routes need an enterprise plan and return 403 on a normal key.
 
-## Ask
+## What is Ask?
 
-The **Ask** box uses [Jev](https://www.typesafe.ai/) to pick a route and fill fields that already have a fixed list of values, such as `post.fields`. You still press Send.
-
-Jev does not write the post or the search text. It chooses from the routes and fields in the page. If it is unsure, it shows the closest routes and leaves the form alone.
+**Ask** uses [Jev](https://www.typesafe.ai/) to pick a route and fill fields that already have a fixed list of values, such as `post.fields`. You still press Send. Jev does not write the post or the search text. If it is unsure, it shows the closest routes and leaves the form alone.
 
 The sidebar does the same when a search has no text match.
 
 Before a post, delete, or direct message, Jev can add a specific confirm. After a failed call, it adds one line about what kind of failure it looks like.
 
-After you clone, run `node start.js` and open the page. Open **Credentials**, paste your TypeSafe key, and press **Save key**. The bridge writes it to `.jev-key` in this folder. That file is gitignored. The browser does not keep the key, and the key is not sent to X.
+Open **Credentials**, paste your TypeSafe key, and press **Save key**. The bridge writes it to `.jev-key` in this folder. That file is gitignored. The browser does not keep the key, and the key is not sent to X.
 
 You can also start it with a key in the environment:
 
@@ -72,13 +78,31 @@ TYPESAFE_API_KEY=your-key node start.js
 
 **Forget** removes `.jev-key`. It does not unset `TYPESAFE_API_KEY`.
 
-## The bridge
+## Why does it need a local bridge?
 
-A browser page cannot call `api.x.com` on its own. `start.js` serves this page and forwards each call. It listens on `127.0.0.1` only, and it only forwards to:
+A browser page on another site cannot call `api.x.com`. `start.js` listens on `127.0.0.1` only, and it only forwards to:
 
 - `api.x.com`
 - `api.twitter.com`
 - `upload.twitter.com`
+
+## FAQ
+
+### Is this the official X or Twitter API console?
+
+No. It is an independent local tool. X sells API access separately, and this repo does not include a key.
+
+### Does the repo contain my API keys?
+
+No. X keys stay in the browser for `http://127.0.0.1:8787`. A TypeSafe key you save is written to `.jev-key`, which git ignores.
+
+### Can I post, delete, and send direct messages?
+
+Yes, with a user token (OAuth 2 or OAuth 1.0a). The page asks you to confirm deletes. A bearer token is enough for many public reads.
+
+### Which X API version does it call?
+
+X API v2, on `api.x.com`. Media upload also uses the v2 chunked upload routes. The old name for this API is the Twitter API v2.
 
 ## License
 

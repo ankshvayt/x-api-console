@@ -1,7 +1,7 @@
 {
   "name": "x-api-console",
   "version": "1.0.0",
-  "description": "Local console for the X API. Your keys stay in the browser.",
+  "description": "Local console for the X API (Twitter API v2). Call posts, users, DMs, media, and streams from your browser. Keys stay on your machine.",
   "license": "MIT",
   "scripts": {
     "start": "node start.js"
