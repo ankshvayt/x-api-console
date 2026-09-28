@@ -207,6 +207,15 @@
     margin-bottom: 12px;
   }
   #bridgebox.show { display: block; }
+  #askbox {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    padding: 10px;
+    margin-bottom: 12px;
+  }
+  #askrow { display: flex; gap: 8px; align-items: center; }
+  #askrow input { flex: 1; min-width: 0; }
+  #asknote { color: var(--muted); margin-top: 6px; min-height: 1.2em; }
   pre, .note, #respbody, #respmeta, #upstatus { font-family: inherit; }
   pre.cmd {
     background: var(--input);
@@ -319,6 +328,14 @@
         <pre class="cmd" id="cmd">node start.js</pre>
         <button type="button" id="copycmd">Copy command</button>
       </div>
+      <div id="askbox">
+        <label class="lbl" for="askq">Ask</label>
+        <div id="askrow">
+          <input id="askq" type="text" spellcheck="false" autocomplete="off" placeholder="last 20 posts from @xdevelopers, with author and likes">
+          <button type="button" id="askbtn">Fill</button>
+        </div>
+        <div id="asknote"></div>
+      </div>
       <div id="form"></div>
     </div>
     <div id="resppane">
@@ -341,6 +358,14 @@
       <h2>Credentials</h2>
       <button type="button" id="credclose">Close</button>
     </div>
+    <label class="lbl" for="jevkey">TypeSafe key</label>
+    <div class="inline">
+      <input id="jevkey" type="password" spellcheck="false" autocomplete="off" placeholder="For Ask">
+      <button type="button" id="jevshow">Show</button>
+      <button type="button" id="jevsave">Save key</button>
+      <button type="button" id="jevforget">Forget</button>
+    </div>
+    <p class="note" id="jevstatus">Not set.</p>
     <p class="note" id="redirectnote">OAuth 2 redirect URI: http://127.0.0.1:8787/oauth/callback</p>
     <label class="lbl" for="credauth">Auth</label>
     <select id="credauth">
@@ -562,6 +587,10 @@
   var saveTimer = null;
   var uploadMediaId = "";
   var pendingBody = null;
+  var jevOn = false;
+  var rankHits = [];
+  var rankQuery = "";
+  var rankGen = 0;
 
   function emptyCreds() {
     return {
@@ -766,8 +795,24 @@
       el("span", { class: "sn", text: "Custom request" })
     ]);
     list.appendChild(customRow);
+    var pinned = {};
+    var qExact = document.getElementById("q").value.trim();
+    if (rankQuery && rankQuery === qExact && rankHits && rankHits.length) {
+      list.appendChild(el("div", { class: "gname", text: "Closest" }));
+      rankHits.forEach(function (i) {
+        if (i < 0 || i >= OPS.length || pinned[i]) return;
+        pinned[i] = 1;
+        var op = OPS[i];
+        var on = current && !current.custom && current.method === op.method && current.path === op.path;
+        list.appendChild(el("div", { class: "row" + (on ? " on" : ""), "data-i": String(i) }, [
+          el("span", { class: "mm " + op.method, text: op.method }),
+          el("span", { class: "sn", text: op.summary || op.path })
+        ]));
+      });
+    }
     var groups = {};
     OPS.forEach(function (op, i) {
+      if (pinned[i]) return;
       if (!opMatches(op, q)) return;
       var g = groupOf(op.path);
       if (!groups[g]) groups[g] = [];
@@ -1348,6 +1393,7 @@
     }
     if (parsed && opt.spec) noteNext(parsed, opt.spec);
     else hideNext();
+    if (res.status >= 400 && !opt.redact) explainFailure(res.status, text, opt.gen || 0);
     return parsed;
   }
 
@@ -1399,7 +1445,13 @@
   function doSend() {
     var spec;
     try { spec = collect(); } catch (e) { showLocal(e.message || String(e)); return; }
-    if (spec.method === "DELETE" && !window.confirm("DELETE " + spec.url + "?")) return;
+    confirmWrite(spec).then(function (ok) {
+      if (!ok) return;
+      sendSpec(spec);
+    });
+  }
+
+  function sendSpec(spec) {
     var gen = ++reqGen;
     var sendBtn = document.getElementById("sendbtn");
     if (sendBtn) sendBtn.disabled = true;
@@ -1425,7 +1477,7 @@
       }
       return result.res.text().then(function (text) {
         if (gen !== reqGen) return;
-        showHttp(result.res, result.ms, text, { spec: spec });
+        showHttp(result.res, result.ms, text, { spec: spec, gen: gen });
         remember(spec.method, spec.pathTemplate, result.res.status, result.ms);
       });
     }).catch(function (e) {
@@ -1935,6 +1987,470 @@
     selectCustom("GET", "/2/");
   }
 
+  var GROUP_BLURB = {
+    Streams: "Live streams of posts, likes, or compliance events",
+    Trends: "Trending topics for a place or for the signed-in user",
+    Insights: "Post analytics and metrics",
+    Posts: "Look up, search, count, publish, or delete posts",
+    Users: "Profiles, follows, blocks, mutes, likes, bookmarks, and timelines",
+    Lists: "Curated lists of accounts",
+    "Direct messages": "Private messages",
+    Media: "Upload images, video, and GIFs",
+    Spaces: "Live audio spaces",
+    Compliance: "Batch compliance jobs",
+    Webhooks: "Webhook setup and replay",
+    Activity: "Account activity subscriptions",
+    Chat: "X chat conversations",
+    Communities: "Communities",
+    "Community Notes": "Community Notes",
+    News: "News stories",
+    Articles: "Long articles",
+    Usage: "API usage",
+    Connections: "Filtered stream connections",
+    Likes: "Like streams",
+    Other: "Other routes"
+  };
+
+  var ERROR_LINE = {
+    auth: "This looks like an auth failure. Check Credentials.",
+    rate_limit: "This looks like a rate limit. Wait, then try again.",
+    bad_query: "This looks like a bad query or parameter. Check the fields above.",
+    missing_field: "This looks like a missing id or field.",
+    enterprise: "This route looks enterprise-only. A normal key will get a 403.",
+    not_found: "This id or resource looks missing.",
+    other: "The call failed. The body below has the detail."
+  };
+
+  function askNote(msg) {
+    var n = document.getElementById("asknote");
+    if (n) n.textContent = msg || "";
+  }
+
+  function jev(state, questions) {
+    return fetch("/jev", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({ state: state, questions: questions })
+    }).then(function (res) {
+      return res.text().then(function (text) {
+        var json = null;
+        try { json = JSON.parse(text); } catch (e) {}
+        if (!res.ok || !json || !json.answers) {
+          var msg = (json && (json.error || json.message || json.detail)) || String(text || "").slice(0, 280) || ("Jev failed (" + res.status + ")");
+          throw new Error(msg);
+        }
+        return json;
+      });
+    });
+  }
+
+  function checkJev() {
+    if (!bridgeOn) {
+      jevOn = false;
+      askNote("Ask needs the bridge. Run node start.js and open the address it prints.");
+      return Promise.resolve();
+    }
+    return fetch("/jev/status", { cache: "no-store" }).then(function (r) {
+      return r.json();
+    }).then(function (j) {
+      paintJev(j || {});
+    }).catch(function () {
+      jevOn = false;
+      askNote("Ask needs the bridge. Run node start.js and open the address it prints.");
+    });
+  }
+
+  function paintJev(j) {
+    jevOn = !!(j && j.configured);
+    var status = document.getElementById("jevstatus");
+    if (!jevOn) {
+      if (status) status.textContent = "Not set. Save key stores it in .jev-key in this folder. It is not committed.";
+      askNote("Add a TypeSafe key in Credentials.");
+      return;
+    }
+    if (status) {
+      status.textContent = j.source === "env"
+        ? "Using TYPESAFE_API_KEY from the environment."
+        : "Saved in .jev-key in this folder.";
+    }
+    askNote("Jev is on. Describe a call, then Fill. You still press Send.");
+  }
+
+  function saveJevKey() {
+    var input = document.getElementById("jevkey");
+    var key = input ? input.value.trim() : "";
+    if (!key) {
+      var status = document.getElementById("jevstatus");
+      if (status) status.textContent = "Paste a TypeSafe key first.";
+      return;
+    }
+    fetch("/jev/key", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key: key })
+    }).then(function (res) {
+      return res.text().then(function (text) {
+        var json = null;
+        try { json = JSON.parse(text); } catch (e) {}
+        if (!res.ok) throw new Error((json && json.error) || "Could not save the key.");
+        if (input) input.value = "";
+        return checkJev();
+      });
+    }).catch(function (e) {
+      var status = document.getElementById("jevstatus");
+      if (status) status.textContent = e && e.message ? e.message : "Could not save the key.";
+    });
+  }
+
+  function forgetJevKey() {
+    fetch("/jev/key", { method: "DELETE" }).then(function () {
+      var input = document.getElementById("jevkey");
+      if (input) input.value = "";
+      return checkJev();
+    }).catch(function (e) {
+      var status = document.getElementById("jevstatus");
+      if (status) status.textContent = e && e.message ? e.message : "Could not forget the key.";
+    });
+  }
+
+  function askState(text) {
+    var found = grabSpans(text);
+    var state = { request: text };
+    if (found.handles.length && !found.ids.length) {
+      state.note = "A @handle is a username, not a numeric user id. A path with {id} needs an id. A search route can take query from:username.";
+    }
+    return state;
+  }
+
+  function groupChoices() {
+    var criteria = {};
+    var seen = {};
+    OPS.forEach(function (op) {
+      var g = groupOf(op.path);
+      if (seen[g]) return;
+      seen[g] = 1;
+      criteria[g] = GROUP_BLURB[g] || g;
+    });
+    return criteria;
+  }
+
+  function pickRoute(text) {
+    return jev(askState(text), {
+      group: {
+        type: "choice",
+        instructions: "Which group of X API routes is this request for?",
+        criteria: groupChoices()
+      }
+    }).then(function (res) {
+      var g = res.answers.group;
+      if (!g || g.confidence < 0.3 || !GROUP_BLURB[g.choice]) {
+        return { unsure: true, group: g, ranked: [] };
+      }
+      var criteria = {};
+      var count = 0;
+      OPS.forEach(function (op, i) {
+        if (groupOf(op.path) !== g.choice) return;
+        var line = op.method + " " + op.path;
+        if (op.summary) line += " " + String(op.summary).slice(0, 80);
+        criteria[String(i)] = line;
+        count++;
+      });
+      if (!count) return { unsure: true, group: g, ranked: [] };
+      return jev(askState(text), {
+        route: {
+          type: "choice",
+          instructions: "Which single X API route should run for this request?",
+          criteria: criteria
+        }
+      }).then(function (res2) {
+        var r = res2.answers.route;
+        var probs = r && r.probabilities ? r.probabilities : {};
+        var ranked = Object.keys(probs).sort(function (a, b) {
+          return (probs[b] || 0) - (probs[a] || 0);
+        }).slice(0, 5).map(function (k) { return Number(k); }).filter(function (i) {
+          return !isNaN(i) && OPS[i];
+        });
+        var unsure = !r || r.confidence < 0.4 || !OPS[Number(r.choice)];
+        return { unsure: unsure, route: r, index: unsure ? -1 : Number(r.choice), ranked: ranked };
+      });
+    });
+  }
+
+  function setNamed(kind, name, value) {
+    var attr = kind === "p" ? "data-p" : "data-q";
+    var nodes = document.querySelectorAll("[" + attr + "]");
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].getAttribute(attr) === name) {
+        nodes[i].value = value;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function grabSpans(text) {
+    var handles = [];
+    var ids = [];
+    var quotes = [];
+    var m;
+    var reH = /@([A-Za-z0-9_]{1,15})/g;
+    while ((m = reH.exec(text))) handles.push(m[1]);
+    var reI = /\b(\d{15,20})\b/g;
+    while ((m = reI.exec(text))) ids.push(m[1]);
+    var reQ = /"([^"]{1,200})"|'([^']{1,200})'/g;
+    while ((m = reQ.exec(text))) quotes.push(m[1] || m[2]);
+    var max = "";
+    var m1 = /\b(\d{1,3})\s*(?:posts|tweets|results|items)\b/i.exec(text);
+    var m2 = /\b(?:last|top|limit|max)\s+(\d{1,3})\b/i.exec(text);
+    if (m1) max = m1[1];
+    else if (m2) max = m2[1];
+    return { handles: handles, ids: ids, quotes: quotes, max: max };
+  }
+
+  function fillKnown(op, text) {
+    var found = grabSpans(text);
+    var idUsed = false;
+    var notes = [];
+    (op.params || []).forEach(function (p) {
+      var n = p.name.toLowerCase();
+      if (p.in === "path") {
+        if ((n.indexOf("username") >= 0 || n === "screen_name") && found.handles[0]) {
+          setNamed("p", p.name, found.handles[0]);
+        } else if (/id$/.test(n) && found.ids.length === 1 && !idUsed) {
+          setNamed("p", p.name, found.ids[0]);
+          idUsed = true;
+        } else if (/id$/.test(n) && found.ids.length > 1) {
+          notes.push("More than one id in the sentence. " + p.name + " was left empty.");
+        }
+      }
+      if (p.in === "query" && p.name === "max_results" && found.max) setNamed("q", p.name, found.max);
+      if (p.in === "query" && p.name === "query") {
+        if (found.quotes[0]) setNamed("q", p.name, found.quotes[0]);
+        else if (found.handles[0] && op.path.indexOf("/search") >= 0) setNamed("q", p.name, "from:" + found.handles[0]);
+      }
+    });
+    return notes;
+  }
+
+  function applyFields(op, text) {
+    var built = fieldQuestions(op);
+    if (!built.tracked.length) return Promise.resolve([]);
+    return jev(askState(text), built.questions).then(function (res) {
+      var answers = res.answers || {};
+      var wants = answers.wants_detail && answers.wants_detail.noul >= 0.5;
+      if (!wants) return [];
+      var buckets = {};
+      built.tracked.forEach(function (item) {
+        var a = answers[item.id];
+        if (!a || a.noul < 0.62) return;
+        if (!buckets[item.param]) buckets[item.param] = [];
+        buckets[item.param].push(item.value);
+      });
+      var names = Object.keys(buckets);
+      names.forEach(function (name) { setNamed("q", name, buckets[name].join(",")); });
+      return names;
+    });
+  }
+
+  function fieldQuestions(op) {
+    var questions = {
+      wants_detail: {
+        type: "noul",
+        instructions: "Does the user ask for specific response fields, metrics, or extra detail beyond the default?",
+        criteria: {
+          true: "They name fields, metrics, or extra detail",
+          false: "They do not ask for extra fields"
+        }
+      }
+    };
+    var tracked = [];
+    (op.params || []).forEach(function (p) {
+      if (p.in !== "query") return;
+      var enums = p.enum || [];
+      if (enums.length < 5) return;
+      if (!/\.fields$/.test(p.name) && p.name !== "expansions") return;
+      enums.forEach(function (name) {
+        if (tracked.length >= 80) return;
+        var id = "f_" + tracked.length;
+        tracked.push({ id: id, param: p.name, value: name });
+        questions[id] = {
+          type: "noul",
+          instructions: "Does the user want the `" + name + "` value included in `" + p.name + "`?"
+        };
+      });
+    });
+    return { questions: questions, tracked: tracked };
+  }
+
+  function topLine(answer) {
+    if (!answer || !answer.probabilities) return "";
+    var probs = answer.probabilities;
+    return Object.keys(probs).sort(function (a, b) {
+      return (probs[b] || 0) - (probs[a] || 0);
+    }).slice(0, 3).map(function (k) {
+      var op = OPS[Number(k)];
+      var label = op ? (op.method + " " + op.path) : k;
+      return label + " " + Math.round((probs[k] || 0) * 100) + "%";
+    }).join("  ");
+  }
+
+  function runAsk() {
+    var text = document.getElementById("askq").value.trim();
+    if (!text) { askNote("Type what you want to do."); return; }
+    if (!jevOn) { checkJev(); return; }
+    var btn = document.getElementById("askbtn");
+    btn.disabled = true;
+    askNote("Picking a route...");
+    pickRoute(text).then(function (picked) {
+      if (picked.ranked && picked.ranked.length) {
+        rankHits = picked.ranked;
+        rankQuery = document.getElementById("q").value.trim();
+        if (!rankQuery) {
+          rankQuery = text;
+          document.getElementById("q").value = text;
+        }
+        renderList(false);
+      }
+      if (picked.unsure || picked.index < 0) {
+        askNote("Not sure which route. " + topLine(picked.route));
+        return;
+      }
+      var op = OPS[picked.index];
+      selectOp(op);
+      var notes = fillKnown(op, text);
+      (op.params || []).forEach(function (p) {
+        if (p.in !== "path" || !p.required) return;
+        var node = document.querySelector('[data-p="' + p.name + '"]');
+        if (!node || !String(node.value || "").trim()) notes.push("Still need " + p.name + ".");
+      });
+      askNote("Filling fields...");
+      return applyFields(op, text).then(function (names) {
+        var conf = picked.route && picked.route.confidence != null ? Math.round(picked.route.confidence * 100) + "%" : "";
+        var msg = "Filled " + op.method + " " + op.path + (conf ? " (" + conf + ")" : "") + ". Check it, then Send.";
+        if (names && names.length) msg += " Fields: " + names.join(", ") + ".";
+        if (notes.length) msg += " " + notes.join(" ");
+        askNote(msg);
+      });
+    }).catch(function (e) {
+      askNote(e && e.message ? e.message : "Jev failed.");
+    }).then(function () {
+      btn.disabled = false;
+    });
+  }
+
+  function lexicalCount(q) {
+    var n = 0;
+    var qq = q.toLowerCase();
+    for (var i = 0; i < OPS.length; i++) if (opMatches(OPS[i], qq)) n++;
+    return n;
+  }
+
+  function onSearchInput() {
+    rankGen++;
+    var mine = rankGen;
+    rankHits = [];
+    rankQuery = "";
+    renderList(false);
+    var q = document.getElementById("q").value.trim();
+    if (!jevOn || q.length < 8 || q.indexOf(" ") < 0) return;
+    if (lexicalCount(q) > 0) return;
+    setTimeout(function () {
+      if (mine !== rankGen) return;
+      if (document.getElementById("q").value.trim() !== q) return;
+      askNote("No text match. Asking Jev...");
+      pickRoute(q).then(function (picked) {
+        if (mine !== rankGen) return;
+        if (!picked.ranked || !picked.ranked.length) {
+          askNote("Jev did not find a close route.");
+          return;
+        }
+        rankHits = picked.ranked;
+        rankQuery = q;
+        renderList(false);
+        askNote(picked.unsure ? "Closest routes. " + topLine(picked.route) : "Closest match is ready in the list.");
+      }).catch(function (e) {
+        if (mine !== rankGen) return;
+        askNote(e && e.message ? e.message : "Jev failed.");
+      });
+    }, 600);
+  }
+
+  function confirmWrite(spec) {
+    var m = spec.method;
+    var write = m === "POST" || m === "PUT" || m === "PATCH" || m === "DELETE";
+    if (!write) return Promise.resolve(true);
+    if (!jevOn) {
+      if (m === "DELETE") return Promise.resolve(window.confirm("DELETE " + spec.url + "?"));
+      return Promise.resolve(true);
+    }
+    var body = spec.bodyText ? String(spec.bodyText).slice(0, 1500) : "";
+    return jev({
+      method: m,
+      path: spec.pathTemplate,
+      body: body
+    }, {
+      public_post: {
+        type: "noul",
+        instructions: "Will this request publish a post that other people on X can see?"
+      },
+      deletes: {
+        type: "noul",
+        instructions: "Does this request delete, undo, or destroy something?"
+      },
+      secret: {
+        type: "noul",
+        instructions: "Does the body contain a credential, access token, or private key?"
+      },
+      dm: {
+        type: "noul",
+        instructions: "Does this request send a direct message?"
+      }
+    }).then(function (res) {
+      var a = res.answers || {};
+      var bits = [];
+      if (a.secret && a.secret.noul >= 0.7) bits.push("The body looks like it contains a secret.");
+      if (m === "DELETE" || (a.deletes && a.deletes.noul >= 0.65)) bits.push("This deletes something.");
+      if (a.public_post && a.public_post.noul >= 0.65) bits.push("This looks like a public post.");
+      if (a.dm && a.dm.noul >= 0.65) bits.push("This sends a direct message.");
+      if (!bits.length) return true;
+      return window.confirm(bits.join(" ") + " Send it?");
+    }).catch(function () {
+      if (m === "DELETE") return window.confirm("DELETE " + spec.url + "?");
+      return true;
+    });
+  }
+
+  function explainFailure(status, text, gen) {
+    if (!jevOn || status < 400) return;
+    jev({
+      status: status,
+      body: String(text || "").slice(0, 1200)
+    }, {
+      kind: {
+        type: "choice",
+        instructions: "What kind of API failure is this?",
+        criteria: {
+          auth: "Missing or rejected credentials",
+          rate_limit: "Too many requests or a rate limit",
+          bad_query: "The query, parameters, or body are not valid",
+          missing_field: "A required field or id is missing",
+          enterprise: "The route needs an enterprise plan",
+          not_found: "The id or resource does not exist",
+          other: "Some other failure"
+        }
+      }
+    }).then(function (res) {
+      if (gen && gen !== reqGen) return;
+      var kind = res.answers && res.answers.kind && res.answers.kind.choice;
+      var line = ERROR_LINE[kind];
+      if (!line) return;
+      var meta = document.getElementById("respmeta");
+      if (meta.textContent.indexOf(line) >= 0) return;
+      meta.textContent = meta.textContent + "\n" + line;
+    }).catch(function () {});
+  }
+
   function init() {
     try {
       OPS = JSON.parse(document.getElementById("catalog").textContent);
@@ -1950,7 +2466,19 @@
     buildCredFields();
     buildScopes();
     paintWho();
-    document.getElementById("q").addEventListener("input", function () { renderList(false); });
+    document.getElementById("q").addEventListener("input", onSearchInput);
+    document.getElementById("askbtn").addEventListener("click", runAsk);
+    document.getElementById("jevsave").addEventListener("click", saveJevKey);
+    document.getElementById("jevforget").addEventListener("click", forgetJevKey);
+    document.getElementById("jevshow").addEventListener("click", function () {
+      var input = document.getElementById("jevkey");
+      var show = input.type === "password";
+      input.type = show ? "text" : "password";
+      this.textContent = show ? "Hide" : "Show";
+    });
+    document.getElementById("askq").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") runAsk();
+    });
     document.getElementById("list").addEventListener("click", function (e) {
       var row = e.target.closest ? e.target.closest(".row") : null;
       if (!row) return;
@@ -2001,7 +2529,7 @@
     if (redirectNote) redirectNote.textContent = "OAuth 2 redirect URI: " + redirectUri();
     restoreSel();
     setBridge(false);
-    checkBridge().then(handleOAuthReturn);
+    checkBridge().then(function () { return checkJev(); }).then(handleOAuthReturn);
     XLib.oauthSelfTest().then(function (ok) {
       if (!ok) bootError("OAuth 1.0a self-test failed. Signature does not match hCtSmYh+iHYCEqBWrE7C7hYmtUk=.");
     }).catch(function (e) {
@@ -2015,7 +2543,53 @@
 <script type="text/plain" id="bridge">
 const http = require("http");
 const https = require("https");
+const fs = require("fs");
+const pathMod = require("path");
 const { URL } = require("url");
+
+function projectKeyPath() {
+  const root = typeof ROOT === "string" && ROOT ? ROOT : process.cwd();
+  return pathMod.join(root, ".jev-key");
+}
+
+function readKeyFile(file) {
+  try {
+    return fs.readFileSync(file, "utf8").trim();
+  } catch (e) {
+    return "";
+  }
+}
+
+function keySource() {
+  if (process.env.TYPESAFE_API_KEY && String(process.env.TYPESAFE_API_KEY).trim()) return "env";
+  if (readKeyFile(projectKeyPath())) return "project";
+  return "";
+}
+
+function typesafeKey() {
+  const source = keySource();
+  if (source === "env") return String(process.env.TYPESAFE_API_KEY).trim();
+  if (source === "project") return readKeyFile(projectKeyPath());
+  return "";
+}
+
+function readBody(req, limit) {
+  return new Promise(function (resolve, reject) {
+    const chunks = [];
+    let size = 0;
+    req.on("data", function (chunk) {
+      size += chunk.length;
+      if (size > limit) {
+        reject(new Error("body too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", function () { resolve(Buffer.concat(chunks)); });
+    req.on("error", reject);
+  });
+}
 
 const ALLOW = {
   "api.x.com": true,
@@ -2090,6 +2664,112 @@ const server = http.createServer(function (req, res) {
     headers["cache-control"] = "no-store";
     res.writeHead(200, headers);
     res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  if (req.method === "GET" && path === "/jev/status") {
+    const source = keySource();
+    sendPlain(req, res, 200, "application/json; charset=utf-8", JSON.stringify({ configured: !!source, source: source }));
+    return;
+  }
+
+  if (req.method === "POST" && path === "/jev/key") {
+    readBody(req, 8000).then(function (buf) {
+      let payload;
+      try {
+        payload = JSON.parse(buf.toString("utf8") || "{}");
+      } catch (e) {
+        sendPlain(req, res, 400, "application/json; charset=utf-8", JSON.stringify({ error: "Key body is not JSON." }));
+        return;
+      }
+      const key = payload && payload.key ? String(payload.key).trim() : "";
+      if (!key || key.length > 500) {
+        sendPlain(req, res, 400, "application/json; charset=utf-8", JSON.stringify({ error: "Paste a TypeSafe key." }));
+        return;
+      }
+      const dest = projectKeyPath();
+      fs.writeFileSync(dest, key + "\n", { mode: 0o600 });
+      try { fs.chmodSync(dest, 0o600); } catch (e) {}
+      sendPlain(req, res, 200, "application/json; charset=utf-8", JSON.stringify({ configured: true, source: "project" }));
+    }).catch(function (err) {
+      if (!res.headersSent) {
+        sendPlain(req, res, 400, "application/json; charset=utf-8", JSON.stringify({
+          error: err && err.message ? err.message : "Could not save the key."
+        }));
+      }
+    });
+    return;
+  }
+
+  if (req.method === "DELETE" && path === "/jev/key") {
+    try { fs.unlinkSync(projectKeyPath()); } catch (e) {}
+    const source = keySource();
+    sendPlain(req, res, 200, "application/json; charset=utf-8", JSON.stringify({ configured: !!source, source: source }));
+    return;
+  }
+
+  if (req.method === "POST" && path === "/jev") {
+    readBody(req, 400000).then(function (buf) {
+      const key = typesafeKey();
+      if (!key) {
+        sendPlain(req, res, 503, "application/json; charset=utf-8", JSON.stringify({
+          error: "No TypeSafe key. Paste one in Ask, or set TYPESAFE_API_KEY."
+        }));
+        return;
+      }
+      let payload;
+      try {
+        payload = JSON.parse(buf.toString("utf8") || "{}");
+      } catch (e) {
+        sendPlain(req, res, 400, "application/json; charset=utf-8", JSON.stringify({ error: "Jev body is not JSON." }));
+        return;
+      }
+      if (!payload || !payload.questions || typeof payload.questions !== "object") {
+        sendPlain(req, res, 400, "application/json; charset=utf-8", JSON.stringify({ error: "Jev request needs questions." }));
+        return;
+      }
+      const out = JSON.stringify({
+        model: "jev-latest",
+        state: payload.state == null ? "" : payload.state,
+        questions: payload.questions
+      });
+      const preq = https.request({
+        hostname: "api.typesafe.ai",
+        port: 443,
+        method: "POST",
+        path: "/v1/systemone",
+        headers: {
+          authorization: "Bearer " + key,
+          "content-type": "application/json",
+          "accept-encoding": "identity",
+          "content-length": Buffer.byteLength(out)
+        }
+      }, function (pres) {
+        const chunks = [];
+        pres.on("data", function (c) { chunks.push(c); });
+        pres.on("end", function () {
+          const headers = corsHeaders(req);
+          headers["content-type"] = pres.headers["content-type"] || "application/json; charset=utf-8";
+          headers["cache-control"] = "no-store";
+          res.writeHead(pres.statusCode || 502, headers);
+          res.end(Buffer.concat(chunks));
+        });
+      });
+      preq.on("error", function (err) {
+        if (!res.headersSent) {
+          sendPlain(req, res, 502, "application/json; charset=utf-8", JSON.stringify({
+            error: err && err.message ? err.message : "Jev request failed."
+          }));
+        }
+      });
+      preq.end(out);
+    }).catch(function (err) {
+      if (!res.headersSent) {
+        sendPlain(req, res, 400, "application/json; charset=utf-8", JSON.stringify({
+          error: err && err.message ? err.message : "Bad body."
+        }));
+      }
+    });
     return;
   }
 

@@ -14,4 +14,5 @@ if (!match) {
 }
 
 const PORT = Number(process.env.PORT || 8787);
+const ROOT = __dirname;
 eval(match[1]);
