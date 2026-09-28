@@ -1,0 +1,12 @@
+{
+  "name": "x-api-console",
+  "version": "1.0.0",
+  "description": "Local console for the X API. Your keys stay in the browser.",
+  "license": "MIT",
+  "scripts": {
+    "start": "node start.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
