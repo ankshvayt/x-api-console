@@ -10,6 +10,7 @@
 <meta property="og:description" content="Call the X API from your browser. Posts, users, DMs, media, and streams. Keys stay on your machine.">
 <meta property="og:url" content="https://ankshvayt.github.io/x-api-console/">
 <meta property="og:type" content="website">
+<meta property="og:image" content="https://ankshvayt.github.io/x-api-console/console.jpg">
 <style>
   body { margin: 0; background: #141311; color: #f4f0e6; font: 18px/1.5 Georgia, "Iowan Old Style", serif; }
   main { max-width: 40rem; margin: 0 auto; padding: 48px 20px 80px; }
@@ -19,6 +20,10 @@
   a { color: #e2ff4d; }
   code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .9em; }
   .lead { font-size: 1.2rem; }
+  .shot { display: block; width: 100%; height: auto; margin: .35rem 0 1.25rem; border: 1px solid #3a3834; }
+  @media (min-width: 880px) {
+    .shot { width: min(72rem, calc(100vw - 48px)); margin-left: 50%; transform: translateX(-50%); }
+  }
 </style>
 <script type="application/ld+json">
 {
@@ -78,6 +83,7 @@
 <body>
 <main>
   <h1>X API console</h1>
+  <img class="shot" src="console.jpg" width="2000" height="1112" alt="The X API console. The endpoint list is on the left and a custom request is on the right." fetchpriority="high">
   <p class="lead">A local console for the X API, also called the Twitter API v2. You paste your own keys, pick a route, and send the call from your browser. The keys stay on your machine.</p>
   <p>This is not an official X product. The source is on <a href="https://github.com/ankshvayt/x-api-console">GitHub</a>. The license is MIT.</p>
 
