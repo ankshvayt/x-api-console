@@ -1,5 +1,7 @@
 # X API console
 
+![The X API console. The endpoint list is on the left and a custom request is on the right.](docs/console.jpg)
+
 A local console for the X API, also called the Twitter API v2. You paste your own keys, pick a route, and send the call from your browser. The keys stay on your machine. This is not an official X product.
 
 The page includes the X API routes published on 28 September 2026, plus a custom request box for any other path on `api.x.com`.
